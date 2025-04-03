@@ -5,15 +5,20 @@ module lcd (
     input [15:0] valor,
     input [2:0] opcode,
     input [2:0] estado,
+    input [3:0] adress,
     output reg [7:0] data
 );
 
-parameter MS = 5000;
+parameter MS = 50000;
+
 parameter WRITE = 0;
 parameter WAIT = 1;
+reg [2:0] status = WRITE;
+
+
 reg [20:0] counter = 0;
 
-reg [20:0] instructions = 0;
+reg [40:0] instructions = 0;
 reg [3:0] U, D, C, M, DM;
 reg [7:0] dezmilhar;
 reg [7:0] milhar;
@@ -25,10 +30,10 @@ initial begin
     EN = 0;
     RS = 0;
     RW = 0;
-instructions = 0;
+    instructions = 0;
+    checagem = 0;
 end
 
-reg [2:0] status = WRITE;
 
 always @(posedge clk) begin
     case(status)
@@ -37,14 +42,18 @@ always @(posedge clk) begin
                 counter <= 0;
                 status <= WAIT;
             end
-            else
+            else 
                 counter <= counter + 1;
         end
         WAIT: begin
             if (counter == MS - 1) begin
                 counter <= 0;
                 status <= WRITE;
-                if(instructions < 40) instructions <= instructions +1;
+                if (instructions < 40) instructions <= instructions +1;
+                else begin 
+                    if (estado == 3'd7)
+                        instructions <= 3;  //display apagado, o comando 3 limpa o lcd
+                    else instructions <=4; end
             end
             else counter <= counter + 1;
         end
@@ -70,7 +79,7 @@ always @(posedge clk) begin
     case (status)
         WRITE: EN <= 1;
         WAIT: EN <= 0;
-        default: EN <= EN;
+        default: EN <= EN; 
     endcase
 
     case(instructions)
@@ -81,123 +90,153 @@ always @(posedge clk) begin
         5: begin data <= 8'h06; RS <= 0; end
 
         6: begin //LETRA 1
-            //if (opcode == 3'b000) //LOAD
-                data <= 8'h4C; //L
-            /*if (opcode == 3'b001 || opcode == 3'b010) //ADD or ADDI
-                data <= 8'h41; //A
-            if (opcode == 3'b011 || opcode == 3'b100) //SUB or SUBI
-                data <= 8'h53; //S
-            if (opcode == 3'b101) //MUL
-                data <= 8'h4D; //M
-            if (opcode == 3'b111) //DPL
-                data <= 8'h44;   //D
-            if (opcode == 3'b110) //CLEAR
-                data <= 8'h43; //C
-            if (estado == 3'b000)  //inicio do LCD
-                data <= 8'h2D; //-*/
-            RS <= 1; end  
-
-        7: begin //LETRA 2
-            //if (opcode == 3'b000) //LOAD
-                data <= 8'h4F; //O
-            /*if (opcode == 3'b001 || opcode == 3'b010) //ADD or ADDI
-                data <= 8'h44; //D
-            if (opcode == 3'b011 || opcode == 3'b100 || opcode == 3'b101) //SUB or SUBI or MUL
-                data <= 8'h55; //U
-            if (opcode == 3'b110) // CLEAR
-                data <= 8'h4C; //L
-            if (opcode == 3'b111) //DPL
-                data <= 8'h50;   //P
-            if (estado == 3'b000)  //inicio do LCD
-                data <= 8'h2D; //-*/
-            RS <= 1; end
-
-        8: begin  //LETRA 3
-            //if (opcode == 3'b000) //LOAD
-                data <= 8'h41; //A
-            /*if (opcode == 3'b001 || opcode == 3'b010) //ADD or ADDI
-                data <= 8'h44; //D
-            if (opcode == 3'b011 || opcode == 3'b100) //SUB or SUBI
-                data <= 8'h42; //B
-            if (opcode == 3'b101 || opcode == 3'b111) //MUL or DPL
-                data <= 8'h4C; //L
-            if (opcode == 3'b110) //CLEAR
-                data <= 8'h45; //E
-            if (estado == 3'b000)  //inicio do LCD
-                data <= 8'h2D; //-*/
-            RS <= 1; end  
-
-        9: begin //LETRA 4
-            //if (opcode == 3'b000) //LOAD
-                data <= 8'h44; //D
-            /*if (opcode == 3'b001 || opcode == 3'b011 || opcode == 3'b101 || opcode == 3'b111) // ADD  or SUB or MUL or DPL(espaço)
-                data <= 8'h20; //espaço
-            if (opcode == 3'b010 || opcode == 3'b100) //ADDI or SUBI
-                data <= 8'h49; //I
-            if (opcode == 3'b110) //CLEAR
-                data <= 8'h41; //A
-            if (estado == 3'b000)  //inicio do LCD
-                data <= 8'h2D; //-*/
-            RS <= 1;
+            if (estado == 3'd7) begin end  // evita que qualquer coisa seja escrita no lcd quando ele deve ser apagado
+            else begin
+                if (opcode == 3'b000) //LOAD
+                    data <= 8'h4C; //L
+                if (opcode == 3'b001 || opcode == 3'b010) //ADD or ADDI
+                    data <= 8'h41; //A
+                if (opcode == 3'b011 || opcode == 3'b100) //SUB or SUBI
+                    data <= 8'h53; //S
+                if (opcode == 3'b101) //MUL
+                    data <= 8'h4D; //M
+                if (opcode == 3'b111) //DPL
+                    data <= 8'h44;   //D
+                if (opcode == 3'b110) //CLEAR
+                    data <= 8'h43; //C
+                if (estado == 3'b001)  //inicio do LCD
+                    data <= 8'h2D; //-
+                RS <= 1; end  
         end
 
+        7: begin //LETRA 2
+            if (estado == 3'd7) begin end
+            else begin
+                if (opcode == 3'b000) //LOAD
+                    data <= 8'h4F; //O
+                if (opcode == 3'b001 || opcode == 3'b010) //ADD or ADDI
+                    data <= 8'h44; //D
+                if (opcode == 3'b011 || opcode == 3'b100 || opcode == 3'b101) //SUB or SUBI or MUL
+                    data <= 8'h55; //U
+                if (opcode == 3'b110) // CLEAR
+                    data <= 8'h4C; //L
+                if (opcode == 3'b111) //DPL
+                    data <= 8'h50;   //P
+                if (estado == 3'b001)  //inicio do LCD
+                    data <= 8'h2D; //-
+                RS <= 1; end
+        end
+        8: begin  //LETRA 3
+            if (estado == 3'd7) begin end
+            else begin
+                if (opcode == 3'b000) //LOAD
+                    data <= 8'h41; //A
+                if (opcode == 3'b001 || opcode == 3'b010) //ADD or ADDI
+                    data <= 8'h44; //D
+                if (opcode == 3'b011 || opcode == 3'b100) //SUB or SUBI
+                    data <= 8'h42; //B
+                if (opcode == 3'b101 || opcode == 3'b111) //MUL or DPL
+                    data <= 8'h4C; //L
+                if (opcode == 3'b110) //CLEAR
+                    data <= 8'h45; //E
+                if (estado == 3'b001)  //inicio do LCD
+                    data <= 8'h2D; //-
+                RS <= 1; end  
+        end
+        9: begin //LETRA 4
+            if (estado == 3'd7) begin end
+            else begin
+                if (opcode == 3'b000) //LOAD
+                    data <= 8'h44; //D
+                if (opcode == 3'b001 || opcode == 3'b011 || opcode == 3'b101 || opcode == 3'b111) // ADD  or SUB or MUL or DPL(espaço)
+                    data <= 8'h20; //espaço
+                if (opcode == 3'b010 || opcode == 3'b100) //ADDI or SUBI
+                    data <= 8'h49; //I
+                if (opcode == 3'b110) //CLEAR
+                    data <= 8'h41; //A
+                if (estado == 3'b001)  //inicio do LCD
+                    data <= 8'h2D; //-
+                RS <= 1;end
+        end
         10: begin
-            //if (opcode == 3'b110) //CLEAR
-                //data <= 8'h52; //R
-            //else
-                data <= 8'h20;
-            RS <= 1;
+            if (estado == 3'd7) begin end
+            else begin
+                if (opcode == 3'b110) //CLEAR
+                    data <= 8'h52; //R
+                else
+                    data <= 8'h20;
+                RS <= 1;end
         end  //ESPAÇO
         11: begin data <= 8'h20; RS <= 1; end
         12: begin data <= 8'h20; RS <= 1; end
         13: begin data <= 8'h20; RS <= 1; end
         14: begin data <= 8'h20; RS <= 1; end
         15: begin data <= 8'h20; RS <= 1; end
-        16: begin data <= 8'h5B; RS <= 1; end    // opcode [
-
+        16: begin 
+            if (estado == 3'd7) begin end
+            else begin
+                data <= 8'h5B; RS <= 1; end    // endereço [
+        end
         17: begin
-            if (estado == 3'b000)  //inicio do LCD
+            if (estado == 3'b001)  //inicio do LCD
                 data <= 8'h2D; //-
             else
-                data <= 8'h30; RS <= 1; end // 0
-
+                if (estado == 3'd7) begin end
+                else begin 
+                    if (adress[3] == 0) begin
+                        data <= 8'h30; RS <= 1; end //0
+                    else begin
+                        data <= 8'h31; RS <= 1; end // 1
+                end 
+            end // 0
         18: begin
-            if (estado == 3'b000)  //inicio do LCD
+            if (estado == 3'b001)  //inicio do LCD
                 data <= 8'h2D; //-
             else begin
-                if (opcode[2] == 0) begin
-                    data <= 8'h30; RS <= 1; // 0
-                end else begin
-                    data <= 8'h31; RS <= 1; // 1
+                if (estado == 3'd7) begin end
+                else begin
+                    if (adress[2] == 0) begin
+                        data <= 8'h30; RS <= 1; end //0
+                    else begin
+                        data <= 8'h31; RS <= 1; end // 1
                 end
             end
         end
 
         19: begin  
-            if (estado == 3'b000)  //inicio do LCD
+            if (estado == 3'b001)  //inicio do LCD
             data <= 8'h2D; //-
             else begin
-                if (opcode[2] == 0) begin
-                    data <= 8'h30; RS <= 1; // 0
-                end else begin
-                    data <= 8'h31; RS <= 1; // 1
+                if (estado == 3'd7) begin end
+                else begin
+                    if (adress[1] == 0) begin
+                        data <= 8'h30; RS <= 1; // 0
+                    end else begin
+                        data <= 8'h31; RS <= 1; // 1
+                    end
                 end
             end
         end
 
         20: begin
-            if (estado == 3'b000)  //inicio do LCD
+            if (estado == 3'b001)  //inicio do LCD
             data <= 8'h2D; //-
             else begin
-                if (opcode[2] == 0) begin
-                    data <= 8'h30; RS <= 1; // 0
-                end else begin
-                    data <= 8'h31; RS <= 1; // 1
+                if (estado == 3'd7) begin end
+                else begin
+                    if (adress[0] == 0) begin
+                        data <= 8'h30; RS <= 1; // 0
+                    end else begin
+                        data <= 8'h31; RS <= 1; // 1
+                    end
                 end
             end
         end
 
-        21: begin data <= 8'h5D; RS <= 1; end    //]
+        21: begin 
+            if (estado == 3'd7) begin end
+            else begin data <= 8'h5D; RS <= 1; end    //]
+        end
 
         22: begin data <= 8'hC0; RS <= 0; end    //QUEBRA DE LINHA
 
@@ -213,22 +252,41 @@ always @(posedge clk) begin
         32: begin data <= 8'h20; RS <= 1; end
        
         33: begin  
-            if(valor[15] == 0 || estado == 3'b000)
-                data <= 8'h2B;  //+
-            else
-                data <= 8'h2D; //-
-            RS <= 1;
-            end
+            if (estado == 3'd7) begin end
+            else begin
+                if(valor[15] == 0 || estado == 3'b000)
+                    data <= 8'h2B;  //+
+                else
+                    data <= 8'h2D; //-
+                RS <= 1;
+                end
+        end
        
-        34: begin data <= dezmilhar; RS <= 1; end
-        35: begin data <= milhar; RS <= 1; end
-        36: begin data <= centenas; RS <= 1; end
-        37: begin data <= dezenas; RS <= 1; end
-        38: begin data <= unidades; RS <= 1; end
-
+        34: begin 
+            if (estado == 3'd7) begin end
+            else begin data <= dezmilhar; RS <= 1; end
+        end
+        35: begin 
+            if (estado == 3'd7) begin end
+            else begin data <= milhar; RS <= 1; end
+        end
+        36: begin 
+            if (estado == 3'd7) begin end
+            else begin data <= centenas; RS <= 1; end
+        end
+        37: begin 
+            if (estado == 3'd7) begin end
+            else begin data <= dezenas; RS <= 1; end
+        end
+        38: begin 
+            if (estado == 3'd7) begin end
+            else begin data <= unidades; RS <= 1; end
+        end
         default: begin data <= 8'h02; RS <= 0; end
            
     endcase
+
+
 end
 
 endmodule

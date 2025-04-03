@@ -3,6 +3,7 @@ module memory(
     input clk, 
     input we,
     input [2:0] opcode,
+	input [3:0] destino,
     input [3:0] addr1,
     input [3:0] addr2,
     input [15:0] data_in,
@@ -15,7 +16,7 @@ module memory(
     // Escrita na memória
     always @(posedge clk) begin
         if (we) begin
-            memoria_registrada[addr1] <= data_in;
+            memoria_registrada[destino] <= data_in;
         end
         if (opcode == 3'b110) begin
             memoria_registrada[0]  <= 16'b0;

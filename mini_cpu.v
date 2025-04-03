@@ -5,23 +5,26 @@ module mini_cpu (
     input botao_send,
     input [17:0] switches,
     output [7:0] lcd_data,
+	output reg [15:0] led_resultado,
+	output reg [2:0] led_opcode,
     output lcd_rs,
     output lcd_rw,
-    output lcd_en
+    output lcd_en,
+	output led_power, led_send, led_lcd
 );
 
     // definição dos estados
-    typedef enum logic [2:0] {
-        IDLE    = 3'd0,  // sistema desligado ou reinicializado
-        FETCH   = 3'd1,  // busca a instrução nos switches
-        DECODE  = 3'd2,  // decodifica a instrução lida
-        EXECUTE = 3'd3,  // executa a operação na ULA
-        STORE   = 3'd4,  // armazena o resultado na memória (ou registrador)
-        DISPLAY = 3'd5,  // aciona o LCD para mostrar os resultados
-        WAIT    = 3'd6   // aguarda a propagação e o "release" do botão
-    } state_t;
+    localparam FETCH = 3'd1,  
+           DECODE = 3'd2,  
+           EXECUTE = 3'd3,  
+           STORE = 3'd4,  
+           DISPLAY = 3'd5,  
+           WAIT = 3'd6,
+           APAGADO = 3'd7;
 
-    state_t state, next_state;
+    reg [2:0] state;
+    reg [2:0] next_state = APAGADO;
+	reg enviou;
 
     // Sinais internos
     reg [17:0] instrucao;
@@ -42,129 +45,176 @@ module mini_cpu (
     // Sinal de pronto do LCD
     wire lcd_ready;
 
+	 
+	 assign led_power = botao_inicio;
+	 assign led_send = botao_send;
+	 always @(*) begin
+	  led_resultado <= resultado;
+	  led_opcode <=  instrucao[17:15];
+	 end
     // Contador para gerar atraso no estado WAIT (aguarda tempo de propagação para estabilização no LCD)
     reg [15:0] wait_counter;
     parameter WAIT_TIME = 16'd50000; // considerando que o clock é de 50MHz, 1ms seria necessário 50.000 ciclos 
     
     // Sinais utilizados para transição de determinados estados 
     wire executou;
+
+    parameter nada = 2'b00,
+            apertou = 2'b01,
+            soltou = 2'b10,
+            espera = 2'b11;
+    reg [1:0] botao_envia = nada;
+    reg [1:0] botao_reset = nada;
+    reg [1:0] botao_comeca = nada;
     
-    // Instanciação da ULA
+    // Instanciacão da ULA
     ula alu (
-        .opcode(opcode),
+        .opcode(instrucao[17:15]),
         .valor1(operando1),
         .valor2(operando2),
         .resultado(resultado_alu),
         .executou(executou)
     );
 
-    // Instanciação da memória (registradores)
+    // Instanciacão da memória (registradores)
     memory memoria (
         .clk(clk),
         .we(write_enable),
-        .opcode(opcode),
-        .addr1(reg_dest),
-        .addr2(reg_src1),
+        .opcode(instrucao[17:15]),
+        .destino(reg_dest),
+        .cpu_estado(state),
+        .addr1(reg_src1),
+        .addr2(reg_src2),
         .data_in(resultado),
         .data_out1(operando1),
         .data_out2(operando2)
     );
 
-    // Instanciação do LCD
-    lcd_controller lcd (
+    // Instanciacão do LCD
+    lcd lcd (
         .clk(clk),
-        .reset(reset),
-        .state(state), // repassa o estado atual, se necessário para o display
+        .estado(state), // repassa o estado atual, se necessário para o display
         .opcode(opcode),
-        .reg_dest(reg_dest),
-        .reg_src1(reg_src1),
-        .reg_src2(reg_src2),
-        .resultado(resultado),
-        .lcd_data(lcd_data),
-        .lcd_rs(lcd_rs),
-        .lcd_rw(lcd_rw),
-        .lcd_en(lcd_en),
-        .ready(lcd_ready)
+        .valor(resultado),
+        .data(lcd_data),
+        .RS(lcd_rs),
+        .RW(lcd_rw),
+        .EN(lcd_en),
+        .adress(reg_dest),
     );
+    //maquina de estados para checar a descida dos botões
+    always @(posedge clk) begin 
+        case(botao_envia)  // inutil
+            nada: begin if (!botao_send) botao_envia <= apertou; end 
+            apertou: begin if (botao_send) botao_envia <= soltou; end
+            soltou: begin botao_envia<=nada; end 
+        endcase
 
-    // Máquina de estados: transição de estados
-    always @(posedge clk or posedge reset) begin
-        if (reset) begin
-            state <= IDLE;
+        case(botao_reset)
+            nada: begin if (!reset) botao_reset <= apertou; end 
+            apertou: begin if (reset) botao_reset <= soltou; end
+            soltou: begin ibotao_reset <= nada; end 
+        endcase
+
+        case(botao_comeca)
+            nada: begin if (!botao_inicio) botao_comeca <= apertou; end 
+            apertou: begin if (botao_inicio) botao_comeca <= soltou; end
+            soltou: begin botao_comeca <= nada; end 
+        endcase
+    end
+
+    // Máquina de estados: transicão de estados
+    always @(posedge clk) begin
+        if (botao_reset == soltou) begin   //retorna para o estado inicial (lcd com tracos e numeros zerados)
+            state <= FETCH;
             wait_counter <= 16'd0; 
-            
-        end else begin
-            state <= next_state;
-
-            if (state != WAIT) 
-                wait_counter <= 16'd0;
-        end
+            end 
+            else begin
+                if (state != WAIT) 
+                    wait_counter <= 16'd0;
+                end
     end
 
     // Lógica de próximo estado
-    always @(*) begin
+    always @(posedge clk) begin
         case (state)
-            IDLE: begin
-                // Aguarda o botão de início para ligar o sistema
-                if (botao_inicio)
+            APAGADO:
+                if (botao_comeca == soltou)  //LCD COMEcA VAZIO, APERTOU BOTAO DE INICIO ELE LIGA!!!!
                     next_state = FETCH;
-                else
-                    next_state = IDLE;
-            end
+                else next_state = APAGADO;
+
 
             FETCH: begin
-                // Busca a instrução assim que o botão de envio for acionado
-                if (botao_send)
+                // Busca a instrucão assim que o botão de envio for acionado
+                if (botao_comeca == soltou)  //SE APERTAR NOVAMENTE O BOTÃO DE COMEcO, APAGA TUDOOOOO DNV
+                    next_state = APAGADO;
+                else 
+                if (botao_envia == soltou)  //apenas o botão de envio habilita as imformacões para o lcd
                     next_state = DECODE;
-                else
-                    next_state = FETCH;
+
             end
 
             DECODE: begin
-                // Após capturar a instrução, vai para execução
-                next_state = EXECUTE;
+                // Após capturar a instrucão, vai para execucão
+                if (botao_comeca == soltou)  //SE APERTAR NOVAMENTE O BOTÃO DE COMEcO, APAGA TUDOOOOO DNV
+                    next_state = APAGADO;
+                else next_state = EXECUTE;
             end
 
             EXECUTE: begin
-                // Executa a operação via ULA (ou lógica interna)
-                if (executou)
+                // Executa a operacão via ULA (ou lógica interna)
+                if (botao_comeca == soltou)  //SE APERTAR NOVAMENTE O BOTÃO DE COMEcO, APAGA TUDOOOOO DNV
+                    next_state = APAGADO;
+                else begin 
+                    if (executou)
                     next_state = STORE;
-                else
+                    else
                     next_state = EXECUTE;
+                end
             end
 
             STORE: begin
                 // Armazena o resultado na memória se necessário
-                next_state = DISPLAY;
+                if (botao_comeca == soltou)  //SE APERTAR NOVAMENTE O BOTÃO DE COMEcO, APAGA TUDOOOOO DNV
+                    next_state = APAGADO;
+                else next_state = DISPLAY;
             end
 
             DISPLAY: begin
                 // Envia os dados para o LCD e aguarda o LCD pronto
-                if (lcd_ready)
+                if (botao_comeca == soltou)  //SE APERTAR NOVAMENTE O BOTÃO DE COMEcO, APAGA TUDOOOOO DNV
+                    next_state = APAGADO;
+                else begin 
+                    if (lcd_ready)
                     next_state = WAIT;
-                else
+                    else
                     next_state = DISPLAY;
+                end
             end
 
             WAIT: begin
-                // Aguarda o "release" do botão para permitir nova instrução
-                if ((wait_counter >= WAIT_TIME) && (!botao_send))
-                    next_state = FETCH;
-                else
-                    next_state = WAIT;
+                // Aguarda o "release" do botão para permitir nova instrucão
+                if (botao_comeca == soltou)  //SE APERTAR NOVAMENTE O BOTÃO DE COMEcO, APAGA TUDOOOOO DNV
+                    next_state = APAGADO;
+                else begin 
+                    if ((wait_counter >= WAIT_TIME) && (botao_envia == soltou))
+                        next_state = FETCH;
+                    else next_state = WAIT;
+                end
             end
 
-            default: next_state = IDLE;
+            default: next_state = FETCH;
         endcase
     end
 
     // Lógica de saída e processamento
-    always @(posedge clk) begin
+    always @(*) begin
         case (state)
-            IDLE: begin
+
+            FETCH: begin
                 // Reseta os sinais e os registradores
                 instrucao      <= 18'b0;
-                opcode         <= 3'b0;
+                //opcode         <= 3'b0;
                 reg_dest       <= 4'b0;
                 reg_src1       <= 4'b0;
                 reg_src2       <= 4'b0;
@@ -172,10 +222,6 @@ module mini_cpu (
                 sinal_imediato <= 1'b0;
                 resultado      <= 16'b0;
                 write_enable   <= 1'b0;
-            end
-
-            FETCH: begin
-                // Captura a instrução dos switches
                 instrucao <= switches;
             end
 
@@ -184,18 +230,38 @@ module mini_cpu (
                 opcode <= instrucao[17:15];
                 case (instrucao[17:15])
                     3'b000: begin // LOAD
-                        reg_dest       <= instrucao[14:11];
-                        sinal_imediato <= instrucao[10];
-                        imediato       <= instrucao[9:4];
+                        reg_dest	   <= instrucao[14:11];
+                        sinal_imediato <= instrucao[6];
+                        imediato       <= instrucao[5:0];
                     end
 
-                    3'b001, 3'b011: begin // ADD, SUB
+                    3'b001: begin // ADD, SUB
                         reg_dest <= instrucao[14:11];
                         reg_src1 <= instrucao[10:7];
                         reg_src2 <= instrucao[6:3];
                     end
 
-                    3'b010, 3'b100, 3'b101: begin // ADDI, SUBI, MUL
+                    3'b011: begin // ADD, SUB
+                        reg_dest <= instrucao[14:11];
+                        reg_src1 <= instrucao[10:7];
+                        reg_src2 <= instrucao[6:3];
+                    end
+
+                    3'b010: begin // ADDI, SUBI, MUL
+                        reg_dest       <= instrucao[14:11];
+                        reg_src1       <= instrucao[10:7];
+                        sinal_imediato <= instrucao[6];
+                        imediato       <= instrucao[5:0];
+                    end
+
+                    3'b100: begin // ADDI, SUBI, MUL
+                        reg_dest       <= instrucao[14:11];
+                        reg_src1       <= instrucao[10:7];
+                        sinal_imediato <= instrucao[6];
+                        imediato       <= instrucao[5:0];
+                    end
+
+                    3'b101: begin // ADDI, SUBI, MUL
                         reg_dest       <= instrucao[14:11];
                         reg_src1       <= instrucao[10:7];
                         sinal_imediato <= instrucao[6];
@@ -207,7 +273,7 @@ module mini_cpu (
                     end
 
                     3'b111: begin // DISPLAY
-                        reg_src1 <= instrucao[3:0];
+                        reg_src1 <= instrucao[14:11];
                     end
 
                     default: ;
@@ -216,7 +282,7 @@ module mini_cpu (
 
             EXECUTE: begin
                 // Executa a operação usando a ULA 
-                case (opcode)
+                case ( instrucao[17:15])
                     3'b001: begin // ADD
                         resultado <= resultado_alu;
                         write_enable <= 1'b1;
@@ -225,7 +291,11 @@ module mini_cpu (
                         resultado <= resultado_alu;
                         write_enable <= 1'b1;
                     end
-                    3'b010, 3'b100: begin // ADDI, SUBI
+                    3'b010: begin // ADDI, SUBI
+                        resultado <= resultado_alu;
+                        write_enable <= 1'b1;
+                    end
+                    3'b100: begin // ADDI, SUBI
                         resultado <= resultado_alu;
                         write_enable <= 1'b1;
                     end

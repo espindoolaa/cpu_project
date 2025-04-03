@@ -5,37 +5,52 @@ module ula (
     output reg signed [15:0] resultado,
     output reg executou
 );
+    parameter LOAD = 3'b000,
+              ADD = 3'b001,
+              ADDI = 3'b010,
+              SUB = 3'b011,
+              SUBI = 3'b100, 
+              MUL = 3'b101;
+        
     always @(*) begin
         executou = 0;
         case (opcode)
-            3'b000: begin 
+            LOAD: begin 
                 resultado = valor2; 
                 executou = 1; 
             end
-            3'b001: begin 
+
+            ADD: begin 
                 resultado = valor1 + valor2; 
                 executou = 1; 
             end
-            3'b010: begin 
+
+            ADDI: begin 
                 resultado = valor1 + valor2; 
                 executou = 1; 
             end
-            3'b011: begin 
+
+            SUB: begin 
                 resultado = valor1 - valor2; 
                 executou = 1; 
             end
-            3'b100: begin
+            
+            SUBI: begin
                 resultado = valor1 - valor2; 
                 executou = 1; 
             end
-            3'b101: begin
+
+            MUL: begin
                 resultado = valor1 * valor2; 
                 executou = 1; 
-            end    
+            end
+
             default: begin
                 resultado = 16'b0;
                 executou = 0;
             end
         endcase
-    end
+    end 
 endmodule
+
+// A ULA aparentemente está OK. 
