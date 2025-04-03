@@ -1,17 +1,19 @@
-module ula (
+module ula ( // recieve the values and executes
     input [2:0] opcode,
-    input [6:0] A,
-    input [6:0] B,
-    output reg [15:0] result
-);
-    always @(*) begin
-        case (opcode)
-            3'b001: result = A + B; // ADD
-            3'b011: result = A - B; // SUB
-            3'b010: result = A + B; // ADDI 
-            3'b100: result = A - B; // SUBI
-            3'b101: result = A * B; // MUL
-            default: result = 16'd0; // caso base com o valor zerado; 
+    input signed [15:0] valor1,
+    input signed [15:0] valor2,
+    output reg signed [15:0] resultado
+    );
+
+    always @(*) begin 
+        case(opcode)
+            3'b000: resultado = valor2; //caso em que ela só recebe
+            3'b001: resultado = valor1 + valor2; //soma
+            3'b010: resultado = valor1 + valor2; //soma com immediatos
+            3'b011: resultado = valor1 - valor2; //subtração
+            3'b100: resultado = valor1 - valor2; //subtração com immediatos
+            3'b101: resultado = valor1 * valor2; //multiplicação;
         endcase
     end
+    
 endmodule
